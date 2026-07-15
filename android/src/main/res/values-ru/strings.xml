@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">15 Пазл</string>
+    <string name="app_name">15 Puzzle</string>
     <string name="title_puzzle">Пазл</string>
     <string name="subtitle">Классический пазл со сдвигающимися плитками</string>
     <string name="btn_play">Играть</string>

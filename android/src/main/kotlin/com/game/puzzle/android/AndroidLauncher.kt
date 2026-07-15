@@ -146,21 +146,27 @@ class PuzzleView(private val activity: AndroidLauncher) : SurfaceView(activity),
         tileSize = (screenW - 80f) / gridSize
         gridOffsetX = (screenW - tileSize * gridSize) / 2f
         gridOffsetY = 220f
-        val btnStartX = (screenW - 420f) / 2f
-        val btnY = screenH - 140f - 60f
-        menuBtn = RectF(btnStartX, btnY, btnStartX + 420f, btnY + 140f)
-        resetBtn = RectF(btnStartX, btnY + 170f, btnStartX + 420f, btnY + 310f)
 
-        playBtn = RectF((screenW - 420f) / 2f, screenH / 2f - 120f, (screenW + 420f) / 2f, screenH / 2f - 20f)
-        settingsBtn = RectF((screenW - 420f) / 2f, screenH / 2f + 10f, (screenW + 420f) / 2f, screenH / 2f + 110f)
-        quitBtn = RectF((screenW - 420f) / 2f, screenH / 2f + 140f, (screenW + 420f) / 2f, screenH / 2f + 240f)
-        backBtn = RectF((screenW - 420f) / 2f, screenH - 240f, (screenW + 420f) / 2f, screenH - 140f)
+        val btnW = screenW * 0.85f
+        val btnH = 100f
+        val btnGap = 24f
+        val btnStartX = (screenW - btnW) / 2f
+
+        val gridBottom = gridOffsetY + tileSize * gridSize + 30f
+        val gameBtnY = (gridBottom + screenH - btnH * 2 - btnGap) / 2f
+        menuBtn = RectF(btnStartX, gameBtnY, btnStartX + btnW, gameBtnY + btnH)
+        resetBtn = RectF(btnStartX, gameBtnY + btnH + btnGap, btnStartX + btnW, gameBtnY + btnH * 2 + btnGap)
+
+        val menuBtnY = screenH / 2f - 120f
+        playBtn = RectF(btnStartX, menuBtnY, btnStartX + btnW, menuBtnY + btnH)
+        settingsBtn = RectF(btnStartX, menuBtnY + btnH + btnGap, btnStartX + btnW, menuBtnY + btnH * 2 + btnGap)
+        quitBtn = RectF(btnStartX, menuBtnY + (btnH + btnGap) * 2, btnStartX + btnW, menuBtnY + btnH * 3 + btnGap * 2)
+        backBtn = RectF(btnStartX, screenH - 180f, btnStartX + btnW, screenH - 80f)
 
         settingsGridRects.clear(); settingsShuffleRects.clear(); settingsSpeedRects.clear(); settingsLangRects.clear()
-        val optW = 150f; val optGap = 15f
+        val optW = (screenW - 120f) / 3f; val optGap = 12f
         for (i in 0..2) {
-            val totalW = 3 * optW + 2 * optGap
-            val sx = (screenW - totalW) / 2f + i * (optW + optGap)
+            val sx = (screenW - (optW * 3 + optGap * 2)) / 2f + i * (optW + optGap)
             settingsLangRects.add(RectF(sx, 200f, sx + optW, 260f))
             settingsGridRects.add(RectF(sx, 370f, sx + optW, 430f))
             settingsShuffleRects.add(RectF(sx, 540f, sx + optW, 600f))
