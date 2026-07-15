@@ -1,32 +1,41 @@
 package com.game.puzzle.desktop
 
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
 import com.game.puzzle.GameController
-import com.game.puzzle.model.GameState
-import java.awt.*
-import java.awt.event.*
-import java.awt.geom.RoundRectangle2D
-import javax.swing.*
-import kotlin.math.abs
+import kotlinx.coroutines.delay
 
-private data class TileVisual(
-    val id: Int, var gridRow: Int, var gridCol: Int,
-    var visualX: Float, var visualY: Float,
-    var targetX: Float = visualX, var targetY: Float = visualY
+private val BgColor = Color(0xFF1E1E2D)
+private val BlueBtn = Color(0xFF3498DB)
+private val DarkBtn = Color(0xFF34495E)
+private val RedBtn = Color(0xFFC0392B)
+private val GridBg = Color(0xFF2C3E50)
+
+private val TileColors = listOf(
+    Color(0xFFE74C3C), Color(0xFFE67E22), Color(0xFFF1C40F), Color(0xFF2ECC71),
+    Color(0xFF1ABC9C), Color(0xFF3498DB), Color(0xFF9B59B6), Color(0xFFE91E63),
+    Color(0xFF00BCD4), Color(0xFFFF5722), Color(0xFF795548), Color(0xFF607D8B),
+    Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFFFF9800), Color(0xFF673AB7)
 )
 
-private data class OptionRow(var label: String, var options: List<String>, var selectedIndex: Int)
-
-private const val WINDOW_WIDTH = 500
-private const val WINDOW_HEIGHT = 650
-private val BG_COLOR = Color(30, 30, 45)
-private val BTN_BG = Color(52, 73, 94)
-private val BTN_HOVER = Color(66, 93, 114)
-private val TILE_COLORS = arrayOf(
-    Color(231, 76, 60), Color(230, 126, 34), Color(241, 196, 15), Color(46, 204, 113),
-    Color(26, 188, 156), Color(52, 152, 219), Color(155, 89, 182), Color(233, 30, 99),
-    Color(0, 188, 212), Color(255, 87, 34), Color(121, 85, 72), Color(96, 125, 139),
-    Color(76, 175, 80), Color(33, 150, 243), Color(255, 152, 0), Color(103, 58, 183)
-)
+enum class Screen { SPLASH, MENU, SETTINGS, GAME }
 
 object AppSettings {
     var gridSize = 4
@@ -37,7 +46,7 @@ object AppSettings {
 
 object Strings {
     private val en = mapOf(
-        "title" to "15 Puzzle", "subtitle" to "Classic sliding tile puzzle",
+        "title" to "Puzzle", "subtitle" to "Classic sliding tile puzzle",
         "play" to "Play", "settings" to "Settings", "quit" to "Quit",
         "back" to "Back", "menu" to "Menu", "reset" to "Reset",
         "settings_title" to "Settings", "grid_size" to "Grid Size",
@@ -47,7 +56,7 @@ object Strings {
         "moves" to "Moves: "
     )
     private val ru = mapOf(
-        "title" to "15 Пазл", "subtitle" to "Классический пазл со сдвигающимися плитками",
+        "title" to "Пазл", "subtitle" to "Классический пазл со сдвигающимися плитками",
         "play" to "Играть", "settings" to "Настройки", "quit" to "Выход",
         "back" to "Назад", "menu" to "Меню", "reset" to "Сброс",
         "settings_title" to "Настройки", "grid_size" to "Размер сетки",
@@ -57,7 +66,7 @@ object Strings {
         "moves" to "Ходы: "
     )
     private val de = mapOf(
-        "title" to "15 Puzzle", "subtitle" to "Klassisches Schiebepuzzle",
+        "title" to "Puzzle", "subtitle" to "Klassisches Schiebepuzzle",
         "play" to "Spielen", "settings" to "Einstellungen", "quit" to "Beenden",
         "back" to "Zurück", "menu" to "Menü", "reset" to "Zurücksetzen",
         "settings_title" to "Einstellungen", "grid_size" to "Rastergröße",
@@ -73,523 +82,299 @@ object Strings {
     }
 }
 
-fun main() {
+fun str(key: String) = Strings[key]
+
+fun main() = application {
     System.setProperty("apple.awt.application.name", "15 Puzzle")
     System.setProperty("apple.awt.application.appearance", "system")
-    SwingUtilities.invokeLater {
-        val frame = GameFrame()
-        frame.toFront()
-        frame.repaint()
+
+    val exit = ::exitApplication
+
+    Window(
+        onCloseRequest = ::exitApplication,
+        title = "15 Puzzle",
+        state = androidx.compose.ui.window.WindowState(
+            size = androidx.compose.ui.unit.DpSize(500.dp, 600.dp)
+        ),
+        resizable = false
+    ) {
+        MaterialTheme {
+            PuzzleDesktopApp(onExit = exit)
+        }
     }
 }
 
-class GameFrame : JFrame("15 Puzzle") {
+@Composable
+fun PuzzleDesktopApp(onExit: () -> Unit = {}) {
+    var currentScreen by remember { mutableStateOf(Screen.SPLASH) }
+    var langVersion by remember { mutableIntStateOf(0) }
 
-    private val splashPanel = SplashPanel()
-    private val menuPanel = MenuPanel()
-    private val settingsPanel = SettingsPanel()
-    private val puzzlePanel = PuzzlePanel()
-
-    init {
-        defaultCloseOperation = EXIT_ON_CLOSE
-        isResizable = false
-        contentPane.background = BG_COLOR
-        contentPane.layout = null
-
-        val icon16 = createIcon(16)
-        val icon32 = createIcon(32)
-        val icon64 = createIcon(64)
-        val icon128 = createIcon(128)
-        iconImages = listOf(icon16, icon32, icon64, icon128)
-
-        listOf(splashPanel, menuPanel, settingsPanel, puzzlePanel).forEach {
-            it.setBounds(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
-            it.isVisible = false
-            contentPane.add(it)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = BgColor
+    ) {
+        when (currentScreen) {
+            Screen.SPLASH -> SplashScreen { currentScreen = Screen.MENU }
+            Screen.MENU -> MenuScreen(
+                onPlay = { currentScreen = Screen.GAME },
+                onSettings = { currentScreen = Screen.SETTINGS },
+                onQuit = onExit
+            )
+            Screen.SETTINGS -> SettingsScreen(
+                onLanguageChange = { langVersion++ },
+                onBack = { currentScreen = Screen.MENU; langVersion++ }
+            )
+            Screen.GAME -> GameScreen(
+                onMenu = { currentScreen = Screen.MENU }
+            )
         }
-        splashPanel.isVisible = true
+    }
+}
 
-        addKeyListener(object : KeyAdapter() {
-            override fun keyPressed(e: KeyEvent) {
-                if (puzzlePanel.isVisible) puzzlePanel.handleKey(e.keyCode)
-            }
-        })
+@Composable
+fun SplashScreen(onFinished: () -> Unit) {
+    var showTitle by remember { mutableStateOf(false) }
+    var showSubtitle by remember { mutableStateOf(false) }
+    var showProgress by remember { mutableStateOf(false) }
 
-        setSize(WINDOW_WIDTH, WINDOW_HEIGHT)
-        setLocationRelativeTo(null)
-        isAlwaysOnTop = true
-        isVisible = true
-        isFocusable = true
-        requestFocusInWindow()
-
-        splashPanel.startAnimation()
+    LaunchedEffect(Unit) {
+        delay(200); showTitle = true
+        delay(600); showSubtitle = true
+        delay(1000); showProgress = true
+        delay(1700); onFinished()
     }
 
-    private fun createIcon(size: Int): java.awt.Image {
-        val img = java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
-        val g = img.createGraphics()
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
-        g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY)
+    val titleAlpha by animateFloatAsState(if (showTitle) 1f else 0f, tween(600), label = "t")
+    val subtitleAlpha by animateFloatAsState(if (showSubtitle) 1f else 0f, tween(600), label = "s")
+    val progress by animateFloatAsState(if (showProgress) 1f else 0f, tween(1200), label = "p")
 
-        g.color = BG_COLOR
-        g.fillRoundRect(0, 0, size, size, size / 8, size / 8)
-
-        val ps = size * 24 / 128; val pg = size * 4 / 128
-        val px = (size - (ps * 4 + pg * 3)) / 2
-        val py = (size - (ps * 4 + pg * 3)) / 2
-        for (i in 0 until 8) {
-            g.color = TILE_COLORS[i]
-            g.fillRoundRect(px + (i % 4) * (ps + pg), py + (i / 4) * (ps + pg), ps, ps, 3, 3)
-            if (size >= 32) {
-                g.color = Color.WHITE
-                g.font = Font("SansSerif", Font.BOLD, (size / 10).coerceAtLeast(8))
-                val fm = g.fontMetrics
-                val num = "${i + 1}"
-                val tx = px + (i % 4) * (ps + pg) + (ps - fm.stringWidth(num)) / 2
-                val ty = py + (i / 4) * (ps + pg) + (ps + fm.ascent - fm.descent) / 2
-                g.drawString(num, tx, ty)
-            }
-        }
-
-        g.dispose()
-        return img
-    }
-
-    fun showMenu() {
-        listOf(splashPanel, settingsPanel, puzzlePanel).forEach { it.isVisible = false }
-        menuPanel.isVisible = true
-        menuPanel.requestFocusInWindow()
-        menuPanel.repaint()
-    }
-
-    fun showSettings() {
-        listOf(splashPanel, menuPanel, puzzlePanel).forEach { it.isVisible = false }
-        settingsPanel.isVisible = true
-        settingsPanel.requestFocusInWindow()
-        settingsPanel.repaint()
-    }
-
-    fun showGame() {
-        listOf(splashPanel, menuPanel, settingsPanel).forEach { it.isVisible = false }
-        puzzlePanel.isVisible = true
-        puzzlePanel.rebuild()
-        puzzlePanel.requestFocusInWindow()
-    }
-
-    inner class SplashPanel : JPanel() {
-        private var startTime = 0L
-        private var titleAlpha = 0f
-        private var subtitleAlpha = 0f
-        private val tileScale = FloatArray(8) { 0f }
-        private var progressWidth = 0f
-        private var done = false
-        private var timer: Timer? = null
-
-        fun startAnimation() {
-            startTime = System.currentTimeMillis()
-            timer = Timer(16, ActionListener {
-                if (done) return@ActionListener
-                val elapsed = (System.currentTimeMillis() - startTime).toFloat()
-                titleAlpha = ((elapsed - 200f) / 600f).coerceIn(0f, 1f)
-                subtitleAlpha = ((elapsed - 800f) / 600f).coerceIn(0f, 1f)
-                for (i in 0 until 8) {
-                    val t = ((elapsed - 400f - i * 100f) / 400f).coerceIn(0f, 1f)
-                    tileScale[i] = t * t * (3f - 2f * t)
-                }
-                progressWidth = ((elapsed - 1800f) / 1200f).coerceIn(0f, 1f) * 300f
-                repaint()
-                if (elapsed > 3500) { timer?.stop(); done = true; showMenu() }
-            }).also { it.initialDelay = 0; it.start() }
-        }
-
-        override fun paintComponent(g: Graphics) {
-            super.paintComponent(g)
-            val g2 = g as Graphics2D
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB)
-            g2.color = BG_COLOR; g2.fillRect(0, 0, width, height)
-
-            g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.05f)
-            g2.color = Color(52, 152, 219); g2.fillOval(-100, 200, 400, 400)
-            g2.color = Color(155, 89, 182); g2.fillOval(250, 100, 350, 350)
-            g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f)
-
-            val ps = 52; val pg = 6
-            val px = (WINDOW_WIDTH - (ps * 4 + pg * 3)) / 2f; val py = 200f
-            for (i in 0 until 8) {
-                if (tileScale[i] <= 0f) continue
-                g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, tileScale[i])
-                val cx = px + (i % 4) * (ps + pg) + ps / 2f
-                val cy = py + (i / 4) * (ps + pg) + ps / 2f
-                val size = ps * tileScale[i]
-                g2.color = TILE_COLORS[i]
-                g2.fill(RoundRectangle2D.Float(cx - size / 2f, cy - size / 2f, size, size, 10f, 10f))
-                if (tileScale[i] > 0.6f) {
-                    g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 20)
-                    val fm = g2.fontMetrics
-                    g2.drawString("${i + 1}", cx - fm.stringWidth("${i + 1}") / 2f, cy + (fm.ascent - fm.descent) / 2f)
+    Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("15", fontSize = 72.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = titleAlpha))
+            Text(str("title"), fontSize = 48.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = titleAlpha))
+            Spacer(Modifier.height(12.dp))
+            Text(str("subtitle"), fontSize = 20.sp, color = Color(0xFF9696AA).copy(alpha = subtitleAlpha))
+            Spacer(Modifier.height(32.dp))
+            SplashTileGrid(titleAlpha)
+            Spacer(Modifier.height(32.dp))
+            if (progress > 0f) {
+                Box(Modifier.width(200.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(GridBg)) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(progress).clip(RoundedCornerShape(2.dp)).background(BlueBtn))
                 }
             }
-            g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f)
+        }
+    }
+}
 
-            if (titleAlpha > 0f) {
-                g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, titleAlpha)
-                g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 56)
-                val t = "15 Puzzle"; g2.drawString(t, (WINDOW_WIDTH - g2.fontMetrics.stringWidth(t)) / 2f, 110f)
-                g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f)
-            }
-            if (subtitleAlpha > 0f) {
-                g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, subtitleAlpha)
-                g2.font = Font("SansSerif", Font.PLAIN, 18); g2.color = Color(150, 150, 170)
-                val s = "Classic sliding tile puzzle"; g2.drawString(s, (WINDOW_WIDTH - g2.fontMetrics.stringWidth(s)) / 2f, 370f)
-                g2.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f)
-            }
-            if (progressWidth > 0f) {
-                val bx = (WINDOW_WIDTH - 300f) / 2f; val by = 420f
-                g2.color = Color(44, 62, 80); g2.fill(RoundRectangle2D.Float(bx, by, 300f, 6f, 3f, 3f))
-                g2.color = Color(52, 152, 219); g2.fill(RoundRectangle2D.Float(bx, by, progressWidth, 6f, 3f, 3f))
+@Composable
+fun SplashTileGrid(alpha: Float) {
+    val tiles = listOf(
+        1 to Color(0xFFE74C3C), 2 to Color(0xFFE67E22), 3 to Color(0xFFF1C40F), 4 to Color(0xFF2ECC71),
+        5 to Color(0xFF1ABC9C), 6 to Color(0xFF3498DB), 7 to Color(0xFF9B59B6), 8 to Color(0xFFE91E63)
+    )
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(alpha)) {
+        for (row in 0..1) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                for (col in 0..3) {
+                    val (num, color) = tiles[row * 4 + col]
+                    Box(Modifier.size(50.dp).clip(RoundedCornerShape(8.dp)).background(color), contentAlignment = Alignment.Center) {
+                        Text("$num", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
+}
 
-    inner class MenuPanel : JPanel() {
-        private val playBtn = Rectangle(WINDOW_WIDTH / 2 - 140, 340, 280, 55)
-        private val settingsBtn = Rectangle(WINDOW_WIDTH / 2 - 140, 410, 280, 55)
-        private val quitBtn = Rectangle(WINDOW_WIDTH / 2 - 140, 480, 280, 55)
-        private var hovered: String? = null
+@Composable
+fun MenuScreen(onPlay: () -> Unit, onSettings: () -> Unit, onQuit: () -> Unit) {
+    val tiles = listOf(
+        1 to Color(0xFFE74C3C), 2 to Color(0xFFE67E22), 3 to Color(0xFFF1C40F), 4 to Color(0xFF2ECC71),
+        5 to Color(0xFF1ABC9C), 6 to Color(0xFF3498DB), 7 to Color(0xFF9B59B6), 8 to Color(0xFFE91E63)
+    )
 
-        init {
-            isOpaque = false
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) {
-                    when {
-                        playBtn.contains(e.x, e.y) -> showGame()
-                        settingsBtn.contains(e.x, e.y) -> showSettings()
-                        quitBtn.contains(e.x, e.y) -> System.exit(0)
-                    }
-                }
-            })
-            addMouseMotionListener(object : MouseMotionAdapter() {
-                override fun mouseMoved(e: MouseEvent) {
-                    val h = when {
-                        playBtn.contains(e.x, e.y) -> "play"
-                        settingsBtn.contains(e.x, e.y) -> "settings"
-                        quitBtn.contains(e.x, e.y) -> "quit"
-                        else -> null
-                    }
-                    if (h != hovered) {
-                        hovered = h
-                        cursor = if (h != null) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) else Cursor.getDefaultCursor()
-                        repaint()
-                    }
-                }
-            })
-        }
+    Box(Modifier.fillMaxSize().background(BgColor), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text("15", fontSize = 72.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(str("title"), fontSize = 48.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Spacer(Modifier.height(24.dp))
 
-        override fun paintComponent(g: Graphics) {
-            super.paintComponent(g)
-            val g2 = g as Graphics2D
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB)
-            g2.color = BG_COLOR; g2.fillRect(0, 0, width, height)
-
-            g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 48)
-            val title = "15 Puzzle"
-            g2.drawString(title, (WINDOW_WIDTH - g2.fontMetrics.stringWidth(title)) / 2, 80)
-
-            val ps = 40; val pg = 4
-            val px = (WINDOW_WIDTH - (ps * 4 + pg * 3)) / 2; val py = 120
-            for (i in 0 until 8) {
-                g2.color = TILE_COLORS[i]
-                g2.fill(RoundRectangle2D.Float((px + (i % 4) * (ps + pg)).toFloat(), (py + (i / 4) * (ps + pg)).toFloat(), ps.toFloat(), ps.toFloat(), 8f, 8f))
-                g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 18)
-                val fm = g2.fontMetrics
-                g2.drawString("${i + 1}", px + (i % 4) * (ps + pg) + (ps - fm.stringWidth("${i + 1}")) / 2, py + (i / 4) * (ps + pg) + (ps + fm.ascent - fm.descent) / 2)
-            }
-
-            g2.font = Font("SansSerif", Font.PLAIN, 18); g2.color = Color(150, 150, 170)
-            g2.drawString(Strings["subtitle"], (WINDOW_WIDTH - g2.fontMetrics.stringWidth(Strings["subtitle"])) / 2, 290)
-
-            drawMenuBtn(g2, playBtn, Strings["play"], hovered == "play", Color(52, 152, 219), Color(52, 173, 219))
-            drawMenuBtn(g2, settingsBtn, Strings["settings"], hovered == "settings", BTN_BG, BTN_HOVER)
-            drawMenuBtn(g2, quitBtn, Strings["quit"], hovered == "quit", Color(191, 66, 40), Color(211, 86, 50))
-        }
-
-        private fun drawMenuBtn(g2: Graphics2D, rect: Rectangle, label: String, hover: Boolean, bg: Color, hoverBg: Color) {
-            g2.color = if (hover) hoverBg else bg
-            g2.fill(RoundRectangle2D.Float(rect.x.toFloat(), rect.y.toFloat(), rect.width.toFloat(), rect.height.toFloat(), 14f, 14f))
-            g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 22)
-            val fm = g2.fontMetrics
-            g2.drawString(label, rect.x + (rect.width - fm.stringWidth(label)) / 2, rect.y + (rect.height + fm.ascent - fm.descent) / 2)
-        }
-    }
-
-    inner class SettingsPanel : JPanel() {
-
-        private val langRow = OptionRow("Language", listOf("English", "Русский", "Deutsch"), 0)
-        private val rows = listOf(
-            langRow,
-            OptionRow("Grid Size", listOf("3×3", "4×4", "5×5"), 1),
-            OptionRow("Shuffle Steps", listOf("20", "50", "100"), 1),
-            OptionRow("Animation", listOf("Fast", "Normal", "Slow"), 1)
-        )
-        private val animSpeeds = intArrayOf(100, 200, 400)
-        private var hoveredBtn: String? = null
-        private val backBtn = Rectangle(WINDOW_WIDTH / 2 - 140, 540, 280, 55)
-
-        init {
-            langRow.selectedIndex = when (AppSettings.language) { "ru" -> 1; "de" -> 2; else -> 0 }
-            isOpaque = false
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) {
-                    val x = e.x; val y = e.y
-                    if (backBtn.contains(x, y)) {
-                        applySettings()
-                        showMenu()
-                        return
-                    }
-                    for ((rowIdx, row) in rows.withIndex()) {
-                        val rowY = if (rowIdx == 0) 120 else 220 + (rowIdx - 1) * 100
-                        val optW = 120; val optGap = 12
-                        val totalW = row.options.size * optW + (row.options.size - 1) * optGap
-                        val startX = (WINDOW_WIDTH - totalW) / 2
-                        for ((optIdx, _) in row.options.withIndex()) {
-                            val ox = startX + optIdx * (optW + optGap)
-                            val btnY = rowY + 15
-                            if (Rectangle(ox, btnY.toInt(), optW, 40).contains(x, y)) {
-                                row.selectedIndex = optIdx
-                                if (rowIdx == 0) {
-                                    AppSettings.language = when (optIdx) { 0 -> "en"; 1 -> "ru"; 2 -> "de"; else -> "en" }
-                                    updateLabels()
-                                }
-                                repaint()
-                                return
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                for (row in 0..1) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(bottom = 4.dp)) {
+                        for (col in 0..3) {
+                            val (num, color) = tiles[row * 4 + col]
+                            Box(Modifier.size(36.dp).clip(RoundedCornerShape(6.dp)).background(color), contentAlignment = Alignment.Center) {
+                                Text("$num", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
-            })
-            addMouseMotionListener(object : MouseMotionAdapter() {
-                override fun mouseMoved(e: MouseEvent) {
-                    val h = if (backBtn.contains(e.x, e.y)) "back" else null
-                    if (h != hoveredBtn) {
-                        hoveredBtn = h
-                        cursor = if (h != null) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) else Cursor.getDefaultCursor()
-                        repaint()
-                    }
-                }
-            })
-        }
-
-        private fun updateLabels() {
-            langRow.label = Strings["language"]
-            rows[1].label = Strings["grid_size"]
-            rows[2].label = Strings["shuffle_steps"]
-            rows[3].label = Strings["animation"]
-            rows[3].options = listOf(Strings["fast"], Strings["normal"], Strings["slow"])
-        }
-
-        private fun applySettings() {
-            AppSettings.gridSize = when (rows[1].selectedIndex) { 0 -> 3; 1 -> 4; else -> 5 }
-            AppSettings.shuffleSteps = when (rows[2].selectedIndex) { 0 -> 20; 1 -> 50; else -> 100 }
-            AppSettings.animationSpeed = animSpeeds[rows[3].selectedIndex]
-        }
-
-        override fun paintComponent(g: Graphics) {
-            super.paintComponent(g)
-            val g2 = g as Graphics2D
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB)
-            g2.color = BG_COLOR; g2.fillRect(0, 0, width, height)
-
-            g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 36)
-            val title = Strings["settings_title"]
-            g2.drawString(title, (WINDOW_WIDTH - g2.fontMetrics.stringWidth(title)) / 2, 70)
-
-            for ((rowIdx, row) in rows.withIndex()) {
-                val rowY = if (rowIdx == 0) 120 else 220 + (rowIdx - 1) * 100
-
-                g2.color = Color(180, 180, 200); g2.font = Font("SansSerif", Font.BOLD, 20)
-                g2.drawString(row.label, 60, rowY)
-
-                val optW = 120; val optGap = 12
-                val totalW = row.options.size * optW + (row.options.size - 1) * optGap
-                val startX = (WINDOW_WIDTH - totalW) / 2
-                val btnY = rowY + 15
-                for ((optIdx, opt) in row.options.withIndex()) {
-                    val ox = startX + optIdx * (optW + optGap)
-                    val selected = optIdx == row.selectedIndex
-                    g2.color = if (selected) Color(52, 152, 219) else Color(55, 60, 75)
-                    g2.fill(RoundRectangle2D.Float(ox.toFloat(), btnY.toFloat(), optW.toFloat(), 40f, 8f, 8f))
-                    g2.color = Color.WHITE; g2.font = Font("SansSerif", if (selected) Font.BOLD else Font.PLAIN, 16)
-                    val fm = g2.fontMetrics
-                    g2.drawString(opt, ox + (optW - fm.stringWidth(opt)) / 2, btnY + (40 + fm.ascent - fm.descent) / 2)
-                }
             }
 
-            g2.color = if (hoveredBtn == "back") BTN_HOVER else BTN_BG
-            g2.fill(RoundRectangle2D.Float(backBtn.x.toFloat(), backBtn.y.toFloat(), backBtn.width.toFloat(), backBtn.height.toFloat(), 14f, 14f))
-            g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 22)
-            val fm = g2.fontMetrics
-            g2.drawString(Strings["back"], backBtn.x + (backBtn.width - fm.stringWidth(Strings["back"])) / 2, backBtn.y + (backBtn.height + fm.ascent - fm.descent) / 2)
+            Spacer(Modifier.height(80.dp))
+            Column(Modifier.fillMaxWidth().padding(horizontal = 40.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                GameButton(str("play"), BlueBtn, onPlay)
+                GameButton(str("settings"), DarkBtn, onSettings)
+                GameButton(str("quit"), RedBtn, onQuit)
+            }
         }
     }
+}
 
-    inner class PuzzlePanel : JPanel() {
+@Composable
+fun GameButton(text: String, color: Color, onClick: () -> Unit, height: Int = 56) {
+    Box(
+        Modifier.fillMaxWidth().height(height.dp).clip(RoundedCornerShape(14.dp)).background(color).clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+    }
+}
 
-        var tileSize = 100
-        var gridOffsetX = 20
-        var gridOffsetY = 80
-        var isAnimating = false
+@Composable
+fun SettingsScreen(onLanguageChange: () -> Unit, onBack: () -> Unit) {
+    var langIndex by remember { mutableIntStateOf(when (AppSettings.language) { "ru" -> 1; "de" -> 2; else -> 0 }) }
+    var gridIndex by remember { mutableIntStateOf(listOf(3, 4, 5).indexOf(AppSettings.gridSize).coerceAtLeast(0)) }
+    var shuffleIndex by remember { mutableIntStateOf(listOf(20, 50, 100).indexOf(AppSettings.shuffleSteps).coerceAtLeast(0)) }
+    var speedIndex by remember { mutableIntStateOf(listOf(100, 200, 400).indexOf(AppSettings.animationSpeed).coerceAtLeast(0)) }
 
-        private val tiles = mutableMapOf<Int, TileVisual>()
-        private var hoveredBtn: String? = null
-        private var controller = GameController(AppSettings.gridSize, AppSettings.shuffleSteps)
-        private var gridSize = AppSettings.gridSize
-        private val menuBtn get() = Rectangle(WINDOW_WIDTH / 2 - 145, 560, 130, 50)
-        private val resetBtn get() = Rectangle(WINDOW_WIDTH / 2 + 15, 560, 130, 50)
+    val langLabels = listOf("English", "Русский", "Deutsch")
+    val gridLabels = listOf("3×3", "4×4", "5×5")
+    val shuffleLabels = listOf("20", "50", "100")
+    val speedLabels = listOf(str("fast"), str("normal"), str("slow"))
 
-        fun rebuild() {
-            gridSize = AppSettings.gridSize
-            controller = GameController(gridSize, AppSettings.shuffleSteps)
-            val area = WINDOW_WIDTH - 40
-            tileSize = area / gridSize
-            gridOffsetX = (WINDOW_WIDTH - tileSize * gridSize) / 2
-            gridOffsetY = 80
-            controller.shuffle()
-            syncFromController()
+    Column(
+        Modifier.fillMaxSize().background(BgColor).padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(40.dp))
+        Text(str("settings_title"), fontSize = 48.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Spacer(Modifier.height(24.dp))
+
+        Text(str("language"), fontSize = 20.sp, color = Color(0xFFB4B4C8))
+        Spacer(Modifier.height(8.dp))
+        OptionRow(langLabels, langIndex) { i ->
+            langIndex = i
+            AppSettings.language = arrayOf("en", "ru", "de")[i]
+            onLanguageChange()
         }
 
-        fun syncFromController() {
-            isAnimating = false
-            tiles.clear()
-            val state = controller.state
-            for (r in 0 until gridSize) {
-                for (c in 0 until gridSize) {
-                    val id = state.grid[r][c] ?: continue
-                    if (id == 0) continue
-                    tiles[id] = TileVisual(id, r, c,
-                        gridOffsetX + c * tileSize.toFloat(),
-                        gridOffsetY + r * tileSize.toFloat()
-                    )
-                }
+        Spacer(Modifier.height(20.dp))
+        Text(str("grid_size"), fontSize = 20.sp, color = Color(0xFFB4B4C8))
+        Spacer(Modifier.height(8.dp))
+        OptionRow(gridLabels, gridIndex) { i -> gridIndex = i; AppSettings.gridSize = listOf(3, 4, 5)[i] }
+
+        Spacer(Modifier.height(20.dp))
+        Text(str("shuffle_steps"), fontSize = 20.sp, color = Color(0xFFB4B4C8))
+        Spacer(Modifier.height(8.dp))
+        OptionRow(shuffleLabels, shuffleIndex) { i -> shuffleIndex = i; AppSettings.shuffleSteps = listOf(20, 50, 100)[i] }
+
+        Spacer(Modifier.height(20.dp))
+        Text(str("animation"), fontSize = 20.sp, color = Color(0xFFB4B4C8))
+        Spacer(Modifier.height(8.dp))
+        OptionRow(speedLabels, speedIndex) { i -> speedIndex = i; AppSettings.animationSpeed = listOf(100, 200, 400)[i] }
+
+        Spacer(Modifier.weight(1f))
+        GameButton(str("back"), DarkBtn, onBack)
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+fun OptionRow(labels: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        labels.forEachIndexed { index, label ->
+            Box(
+                Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(10.dp))
+                    .background(if (index == selectedIndex) BlueBtn else Color(0xFF373C4B))
+                    .clickable { onSelect(index) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(label, color = Color.White, fontSize = if (label.length > 6) 16.sp else 20.sp,
+                    fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Normal)
             }
-            repaint()
         }
+    }
+}
 
-        fun handleKey(keyCode: Int) {
-            if (isAnimating) return
-            val (er, ec) = controller.state.emptyPosition()
-            val (tr, tc) = when (keyCode) {
-                KeyEvent.VK_UP -> (er + 1) to ec
-                KeyEvent.VK_DOWN -> (er - 1) to ec
-                KeyEvent.VK_LEFT -> er to (ec + 1)
-                KeyEvent.VK_RIGHT -> er to (ec - 1)
-                else -> return
-            }
-            tryMove(tr, tc)
-        }
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun GameScreen(onMenu: () -> Unit) {
+    val controller = remember(AppSettings.gridSize, AppSettings.shuffleSteps) {
+        GameController(AppSettings.gridSize, AppSettings.shuffleSteps).also { it.shuffle() }
+    }
+    var gridVersion by remember { mutableIntStateOf(0) }
 
-        private fun tryMove(targetRow: Int, targetCol: Int): Boolean {
-            if (targetRow !in 0 until gridSize || targetCol !in 0 until gridSize) return false
-            if (isAnimating) return false
-            val (er, ec) = controller.state.emptyPosition()
-            if (abs(targetRow - er) + abs(targetCol - ec) != 1) return false
-            val tileId = controller.state.grid[targetRow][targetCol] ?: return false
-            if (!controller.moveTile(targetRow, targetCol)) return false
+    LaunchedEffect(Unit) { gridVersion++ }
 
-            isAnimating = true
-            val tile = tiles[tileId] ?: return false
-            tile.targetX = gridOffsetX + ec * tileSize.toFloat()
-            tile.targetY = gridOffsetY + er * tileSize.toFloat()
-            val startTime = System.currentTimeMillis()
-            val startX = tile.visualX; val startY = tile.visualY
+    fun tryMove(row: Int, col: Int) {
+        if (controller.moveTile(row, col)) gridVersion++
+    }
 
-            Timer(16, object : ActionListener {
-                override fun actionPerformed(e: ActionEvent) {
-                    val t = ((System.currentTimeMillis() - startTime).toFloat() / AppSettings.animationSpeed).coerceIn(0f, 1f)
-                    val s = t * t * (3f - 2f * t)
-                    tile.visualX = startX + (tile.targetX - startX) * s
-                    tile.visualY = startY + (tile.targetY - startY) * s
-                    repaint()
-                    if (t >= 1f) {
-                        tile.visualX = tile.targetX; tile.visualY = tile.targetY
-                        tile.gridRow = er; tile.gridCol = ec
-                        isAnimating = false; repaint()
+    Column(
+        Modifier.fillMaxSize().background(BgColor).padding(horizontal = 16.dp)
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && !controller.isSolved) {
+                    val (er, ec) = controller.state.emptyPosition()
+                    when (event.key) {
+                        Key.DirectionUp -> { tryMove(er + 1, ec); true }
+                        Key.DirectionDown -> { tryMove(er - 1, ec); true }
+                        Key.DirectionLeft -> { tryMove(er, ec + 1); true }
+                        Key.DirectionRight -> { tryMove(er, ec - 1); true }
+                        else -> false
                     }
-                }
-            }).also { it.initialDelay = 0; it.start() }
-            return true
+                } else false
+            },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(20.dp))
+        Text("${str("moves")}${controller.movesCount}", fontSize = 28.sp, fontWeight = FontWeight.Bold,
+            color = Color.White, modifier = Modifier.align(Alignment.Start))
+        Text(if (controller.isSolved) str("solved") else str("playing"), fontSize = 20.sp,
+            color = if (controller.isSolved) Color(0xFF2ECC71) else Color.LightGray,
+            modifier = Modifier.align(Alignment.Start))
+
+        Spacer(Modifier.height(8.dp))
+
+        GameGrid(controller, gridVersion, ::tryMove, Modifier.fillMaxWidth().aspectRatio(1f))
+
+        Spacer(Modifier.height(8.dp))
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            GameButton(str("menu"), DarkBtn, onMenu, 44)
+            GameButton(str("reset"), DarkBtn, { controller.reset(); gridVersion++ }, 44)
         }
+        Spacer(Modifier.height(12.dp))
+    }
+}
 
-        override fun paintComponent(g: Graphics) {
-            super.paintComponent(g)
-            val g2 = g as Graphics2D
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g2.color = BG_COLOR; g2.fillRect(0, 0, width, height)
+@Composable
+fun GameGrid(controller: GameController, gridVersion: Int, onTileClick: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
+    val state = controller.state
+    val size = controller.gridSize
 
-            g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 22)
-            g2.drawString("${Strings["moves"]}${controller.movesCount}", 20, 35)
-            g2.font = Font("SansSerif", Font.BOLD, 18)
-            val status = if (controller.isSolved) Strings["solved"] else Strings["playing"]
-            g2.color = if (controller.isSolved) Color(46, 204, 113) else Color.WHITE
-            g2.drawString(status, 20, 60)
-
-            g2.color = Color(44, 62, 80)
-            g2.fill(RoundRectangle2D.Float(gridOffsetX - 8f, gridOffsetY - 8f,
-                (tileSize * gridSize + 16).toFloat(), (tileSize * gridSize + 16).toFloat(), 12f, 12f))
-
-            for ((_, tile) in tiles) {
-                val color = TILE_COLORS[(tile.id - 1) % TILE_COLORS.size]
-                val x = tile.visualX.toInt() + 3; val y = tile.visualY.toInt() + 3; val size = tileSize - 6
-                g2.color = color
-                g2.fill(RoundRectangle2D.Float(x.toFloat(), y.toFloat(), size.toFloat(), size.toFloat(), 8f, 8f))
-                g2.color = Color.WHITE
-                g2.font = Font("SansSerif", Font.BOLD, (tileSize * 0.35f).toInt().coerceAtLeast(14))
-                val fm = g2.fontMetrics
-                g2.drawString("${tile.id}", x + (size - fm.stringWidth("${tile.id}")) / 2, y + (size + fm.ascent - fm.descent) / 2)
-            }
-
-            drawBtn(g2, menuBtn, Strings["menu"], hoveredBtn == "menu")
-            drawBtn(g2, resetBtn, Strings["reset"], hoveredBtn == "reset")
-        }
-
-        private fun drawBtn(g2: Graphics2D, rect: Rectangle, label: String, hover: Boolean) {
-            g2.color = if (hover) BTN_HOVER else BTN_BG
-            g2.fill(RoundRectangle2D.Float(rect.x.toFloat(), rect.y.toFloat(), rect.width.toFloat(), rect.height.toFloat(), 10f, 10f))
-            g2.color = Color.WHITE; g2.font = Font("SansSerif", Font.BOLD, 16)
-            val fm = g2.fontMetrics
-            g2.drawString(label, rect.x + (rect.width - fm.stringWidth(label)) / 2, rect.y + (rect.height + fm.ascent - fm.descent) / 2)
-        }
-
-        init {
-            isOpaque = false
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) {
-                    requestFocusInWindow()
-                    when {
-                        menuBtn.contains(e.x, e.y) -> showMenu()
-                        resetBtn.contains(e.x, e.y) -> { if (!isAnimating) { controller.reset(); syncFromController() } }
-                        else -> {
-                            if (!isAnimating) {
-                                val col = ((e.x - gridOffsetX) / tileSize).toInt()
-                                val row = ((e.y - gridOffsetY) / tileSize).toInt()
-                                tryMove(row, col)
-                            }
+    Column(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(GridBg).padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        for (r in 0 until size) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (c in 0 until size) {
+                    val id = state.grid[r][c]
+                    if (id != null && id != 0) {
+                        Box(
+                            Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(8.dp))
+                                .background(TileColors[(id - 1) % TileColors.size])
+                                .clickable { onTileClick(r, c) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("$id", color = Color.White, fontSize = (28 / (size / 3f)).sp, fontWeight = FontWeight.Bold)
                         }
+                    } else {
+                        Spacer(Modifier.weight(1f).aspectRatio(1f))
                     }
                 }
-            })
-            addMouseMotionListener(object : MouseMotionAdapter() {
-                override fun mouseMoved(e: MouseEvent) {
-                    val h = when {
-                        menuBtn.contains(e.x, e.y) -> "menu"
-                        resetBtn.contains(e.x, e.y) -> "reset"
-                        else -> null
-                    }
-                    if (h != hoveredBtn) { hoveredBtn = h; cursor = if (h != null) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) else Cursor.getDefaultCursor(); repaint() }
-                }
-            })
+            }
         }
     }
 }

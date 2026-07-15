@@ -1,11 +1,16 @@
 plugins {
     kotlin("jvm")
     application
+    id("org.jetbrains.compose")
 }
 
 dependencies {
     implementation(project(":core"))
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+
+    implementation(compose.desktop.currentOs)
+    implementation(compose.material3)
+    implementation(compose.animation)
 }
 
 java {
@@ -15,18 +20,6 @@ java {
 
 application {
     mainClass.set("com.game.puzzle.desktop.DesktopLauncherKt")
-}
-
-tasks.register<Exec>("runDesktop") {
-    dependsOn("classes")
-    val runtimeCP = sourceSets["main"].runtimeClasspath
-    val cp = runtimeCP.files.joinToString(":")
-    commandLine(
-        org.gradle.internal.jvm.Jvm.current().javaHome.absolutePath + "/bin/java",
-        "-cp", cp,
-        "com.game.puzzle.desktop.DesktopLauncherKt"
-    )
-    workingDir = projectDir
 }
 
 tasks.jar {
