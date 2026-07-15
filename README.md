@@ -4,9 +4,17 @@ Classic sliding tile puzzle game built with Kotlin. Runs on Android and Desktop.
 
 ## Screenshots
 
+### Android
+
 | Splash | Menu | Settings | Game |
 |--------|------|----------|------|
 | ![Splash](screenshots/android_splash.png) | ![Menu](screenshots/android_menu.png) | ![Settings](screenshots/android_settings.png) | ![Game](screenshots/android_game.png) |
+
+### Desktop
+
+| Menu | Settings | Game |
+|------|----------|------|
+| ![Menu](screenshots/desktop_menu.png) | ![Settings](screenshots/desktop_settings.png) | ![Game](screenshots/desktop_game.png) |
 
 ## Features
 
